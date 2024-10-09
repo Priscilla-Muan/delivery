@@ -1,155 +1,308 @@
 <?php
-require 'database.php'; 
-
 session_start();
-
-$message = ''; 
+require 'database.php'; 
 $database = new Database();
-$conn = $database->getConnection();
+$db = $database->getConnection(); 
+
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'admin') {
+    die("Access denied!");
+}
+
+$orders = [];
+$drivers = [];
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $username = $_POST["username"];
-    $password = $_POST["password"];
-    $email = $_POST["email"];
-    $role = $_POST["role"];
-    $contact = isset($_POST["contact"]) ? $_POST["contact"] : null; // Get the driver's contact if provided
+    if (isset($_POST['create_order'])) {
+        $client_name = $_POST['client_name'];
+        $client_address = $_POST['client_address'];
+        $client_contact = $_POST['client_contact'];
 
-    if (validate_user_input($username, $password, $email, $role, $contact)) {
-        $sanitized_username = $conn->quote($username); 
-        $sanitized_password = password_hash($password, PASSWORD_DEFAULT);
-        $sanitized_email = $conn->quote($email); 
-        $sanitized_contact = !empty($contact) ? $conn->quote($contact) : null; // Quote the contact if it's provided
-        $check_sql = "SELECT * FROM users WHERE username=$sanitized_username";
-        $check_result = $conn->query($check_sql);
-
-        if ($check_result->rowCount() > 0) {
-            $message = '<div class="alert alert-danger text-center">This account already exists. 
-            <a href="index.php" class="alert-link">Go to homepage</a> to log in.</div>';
+        $createQuery = "INSERT INTO orders (client_name, client_address, client_contact, status, date_time) VALUES (:client_name, :client_address, :client_contact, 'Pending', NOW())";
+        $stmt = $db->prepare($createQuery);
+        $stmt->bindParam(':client_name', $client_name);
+        $stmt->bindParam(':client_address', $client_address);
+        $stmt->bindParam(':client_contact', $client_contact);
+        $stmt->execute();
+    } elseif (isset($_POST['update_status'])) {
+        $order_id = $_POST['order_id'];
+        $status = $_POST['status'];
+        $valid_statuses = ['Pending', 'On the way', 'Delivered'];
+        if (!in_array($status, $valid_statuses)) {
+            echo "Invalid status value!";
         } else {
-            $sql = "INSERT INTO users (username, password, email, role, contact) 
-                    VALUES ($sanitized_username, '$sanitized_password', $sanitized_email, '$role', $sanitized_contact)";
-
-            if ($conn->exec($sql)) {
-                $message = '<div class="alert alert-success text-center">Account created successfully. You can now log in.</div>';
+            $updateQuery = "UPDATE orders SET status = :status WHERE id = :order_id";
+            $stmt = $db->prepare($updateQuery);
+            $stmt->bindParam(':status', $status);
+            $stmt->bindParam(':order_id', $order_id);
+            if ($stmt->execute()) {
+                echo "Order status updated successfully.";
             } else {
-                $message = '<div class="alert alert-danger text-center">Error: ' . $conn->errorInfo()[2] . '</div>'; 
+                echo "Error updating order status.";
             }
         }
-    } else {
-        $message = '<div class="alert alert-danger text-center">Invalid user input.</div>';
+    } elseif (isset($_POST['delete_order'])) {
+        $order_id = $_POST['order_id'];
+
+        $deleteQuery = "DELETE FROM orders WHERE id = :order_id";
+        $stmt = $db->prepare($deleteQuery);
+        $stmt->bindParam(':order_id', $order_id);
+        $stmt->execute();
+    } elseif (isset($_POST['assign_driver'])) {
+        $order_id = $_POST['order_id'];
+        $driver_id = $_POST['driver_id'];
+
+        // Assign Driver
+        $assignQuery = "UPDATE orders SET driver_id = :driver_id WHERE id = :order_id";
+        $stmt = $db->prepare($assignQuery);
+        $stmt->bindParam(':driver_id', $driver_id);
+        $stmt->bindParam(':order_id', $order_id);
+        $stmt->execute();
     }
 }
 
-function validate_user_input($username, $password, $email, $role, $contact) {
-    $is_valid = !empty($username) && !empty($password) && !empty($email) &&
-                filter_var($email, FILTER_VALIDATE_EMAIL) &&
-                in_array($role, array("admin", "client", "driver"));
+// Fetch all orders
+$query = "SELECT o.*, u.username AS driver_username FROM orders o LEFT JOIN users u ON o.driver_id = u.id";
+$stmt = $db->prepare($query);
+$stmt->execute();
+$orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    if ($role === "driver") {
-        return $is_valid && !empty($contact); // Driver must have a contact
-    }
-    
-    return $is_valid;
-}
+// Get all drivers
+$queryDrivers = "SELECT id, username FROM users WHERE role = 'driver'";
+$stmtDrivers = $db->prepare($queryDrivers);
+$stmtDrivers->execute();
+$drivers = $stmtDrivers->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>Rindra Delivery Service - Create Account</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+</head>
     <style>
         body {
-            background-image: url('img1.jpg'); 
+            background-image: url('img6.jpg');
+            background-repeat: no-repeat;
+            background-attachment: fixed;
             background-size: cover;
-            background-position: center;
+                    color: #333; 
+        }
+
+        .table {
+            background-color: rgba(255, 255, 255, 0.85); 
+            border-radius: 15px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        h1, h2 {
+            text-align: center;
             color: #333;
         }
-        .card {
-            background-color: rgba(255, 255, 255, 0.9);
-            border: 1px solid #007bff; 
-            border-radius: 10px;
-        }
-        .alert {
-            border-radius: 5px;
-        }
-        .links {
-            display: flex;
-            justify-content: space-between;
+
+        .error-message {
+            color: red;
+            text-align: center;
             margin-bottom: 15px;
         }
-        .hidden-field {
-            display: none;
-        }
-    </style>
-    <script>
-        function toggleContactField() {
-            var role = document.getElementById("role").value;
-            var contactField = document.getElementById("contactField");
-            if (role === "driver") {
-                contactField.style.display = "block";
-            } else {
-                contactField.style.display = "none";
-            }
-        }
-    </script>
-</head>
 
+        .logo {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .logo img {
+            max-width: 185px;
+        }
+
+        .text-center-custom {
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .btn-primary {
+            background-color: #007bff;
+            border-color: #007bff;
+        }
+
+        .btn-primary:hover {
+            background-color: #0056b3;
+            border-color: #004085;
+        }
+
+        .btn-success {
+            background-color: #28a745;
+            border-color: #28a745;
+        }
+
+        .btn-success:hover {
+            background-color: #218838;
+            border-color: #1e7e34;
+        }
+
+        .btn-danger {
+            background-color: #dc3545;
+            border-color: #dc3545;
+        }
+
+        .btn-danger:hover {
+            background-color: #c82333;
+            border-color: #bd2130;
+        }
+
+        .btn-warning {
+            background-color: #ffc107;
+            border-color: #ffc107;
+        }
+
+        .btn-warning:hover {
+            background-color: #e0a800;
+            border-color: #d39e00;
+        }
+
+        .table thead th {
+            background-color: #6c757d; 
+            color: white;
+            text-align: center;
+        }
+
+        .table tbody td {
+            vertical-align: middle;
+            text-align: center;
+        }
+
+        .form-control {
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .container {
+            background-color: rgba(255, 255, 255, 0.9); 
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+        }
+
+    </style>
 <body>
 <div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card p-4 border border-primary">
-                <h2 class="text-center">Create Your Account</h2>
-                <?php if (!empty($message)): ?>
-                    <?php echo $message; ?>
-                <?php endif; ?>
-
-                <form action="create_account.php" method="POST">
-                    <div class="mb-3">
-                        <label for="username" class="form-label">Username</label>
-                        <input type="text" class="form-control" id="username" name="username" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="email" class="form-label">Email</label>
-                        <input type="email" class="form-control" id="email" name="email" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="password" class="form-label">Password</label>
-                        <input type="password" class="form-control" id="password" name="password" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="role" class="form-label">Role</label>
-                        <select name="role" id="role" class="form-control" onchange="toggleContactField()" required>
-                            <option value="">Select Role</option>
-                            <option value="admin">Admin</option>
-                            <option value="client">Client</option>
-                            <option value="driver">Driver</option>
-                        </select>
-                    </div>
-
-                    <!-- Hidden contact field for drivers -->
-                    <div class="mb-3 hidden-field" id="contactField">
-                        <label for="contact" class="form-label">Driver Contact</label>
-                        <input type="text" class="form-control" id="contact" name="contact" maxlength="55">
-                    </div>
-
-                    <div class="d-flex justify-content-center">
-                        <button type="submit" class="btn btn-primary">Create Account</button>
-                    </div>
-                </form><br>
-
-                <div class="links">
-                    <a href="index.php">Sign In</a>
-                    <a href="terms_and_policy.php">Terms and Policy</a>
-                </div>
-
-            </div>
-        </div>
+    <h1>Admin Dashboard</h1>
+    <form method="POST" class="row g-3 mb-4">
+    <div class="col-auto">
+        <label for="searchInput" class="visually-hidden">Search by Client Name</label>
+        <input type="text" class="form-control" id="searchInput" name="search_query" placeholder="Search by Client Name" value="<?php echo htmlspecialchars($search_query); ?>">
     </div>
+    <div class="col-auto">
+        <button type="submit" name="search" class="btn btn-primary mb-3">Search</button>
+    </div>
+</form>
+
+    <!-- Create Order Form -->
+    <h2>Create Order</h2>
+    <form method="POST">
+        <div class="mb-3">
+            <label for="client_name" class="form-label">Client Name</label>
+            <input type="text" class="form-control" id="client_name" name="client_name" required>
+        </div>
+        <div class="mb-3">
+            <label for="client_address" class="form-label">Client Address</label>
+            <input type="text" class="form-control" id="client_address" name="client_address" required>
+        </div>
+        <div class="mb-3">
+            <label for="client_contact" class="form-label">Client Contact</label>
+            <input type="text" class="form-control" id="client_contact" name="client_contact" required>
+        </div>
+        <button type="submit" name="create_order" class="btn btn-primary">Create Order</button>
+    </form>
+
+    <!-- Orders Table -->
+    <h2 class="mt-5">All Orders</h2>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Order ID</th>
+                <th>Client Name</th>
+                <th>Client Address</th>
+                <th>Client Contact</th>
+                <th>Status</th>
+                <th>Assigned Driver</th>
+                <th>Assign Driver</th>
+                <th>Update Status</th>
+                <th>Delete</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($orders as $order): ?>
+                <tr>
+                    <td><?php echo htmlspecialchars($order['id']); ?></td>
+                    <td><?php echo htmlspecialchars($order['client_name']); ?></td>
+                    <td><?php echo htmlspecialchars($order['client_address']); ?></td>
+                    <td><?php echo htmlspecialchars($order['client_contact']); ?></td>
+                    <td><?php echo htmlspecialchars($order['status']); ?></td>
+                    <td><?php echo htmlspecialchars($order['driver_username'] ?: 'Not assigned'); ?></td>
+                    <td>
+                        <form method="POST" class="d-inline">
+                            <input type="hidden" name="order_id" value="<?php echo $order['id']; ?>">
+                            <select name="driver_id" class="form-select" required>
+                                <option value="">Select Driver</option>
+                                <?php foreach ($drivers as $driver): ?>
+                                    <option value="<?php echo $driver['id']; ?>"><?php echo htmlspecialchars($driver['username']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button type="submit" name="assign_driver" class="btn btn-warning btn-sm mt-1">Assign</button>
+                        </form>
+                    </td>
+                    <td>
+                        <form method="POST" class="d-inline">
+                            <input type="hidden" name="order_id" value="<?php echo $order['id']; ?>">
+                            <select name="status" class="form-select" required>
+                                <option value="Pending" <?php echo $order['status'] == 'Pending' ? 'selected' : ''; ?>>Pending</option>
+                                <option value="On the way" <?php echo $order['status'] == 'On the way' ? 'selected' : ''; ?>>On the way</option>
+                                <option value="Delivered" <?php echo $order['status'] == 'Delivered' ? 'selected' : ''; ?>>Delivered</option>
+                            </select>
+                            <button type="submit" name="update_status" class="btn btn-success btn-sm mt-1">Update</button>
+                        </form>
+                    </td>
+                    <td>
+                        <form method="POST" class="d-inline">
+                            <input type="hidden" name="order_id" value="<?php echo $order['id']; ?>">
+                            <button type="submit" name="delete_order" class="btn btn-danger btn-sm mt-1">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+
+    <!-- Order History Section -->
+    <h2 class="mt-5">Order History</h2>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Order ID</th>
+                <th>Client Name</th>
+                <th>Status</th>
+                <th>Date/Time</th>
+                <th>Assigned Driver</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($orders as $order): ?>
+                <?php if ($order['status'] == 'Delivered'): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($order['id']); ?></td>
+                        <td><?php echo htmlspecialchars($order['client_name']); ?></td>
+                        <td><?php echo htmlspecialchars($order['status']); ?></td>
+                        <td><?php echo htmlspecialchars($order['date_time']); ?></td>
+                        <td><?php echo htmlspecialchars($order['driver_username'] ?: 'Not assigned'); ?></td>
+                    </tr>
+                <?php endif; ?>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
