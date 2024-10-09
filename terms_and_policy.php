@@ -108,7 +108,7 @@
         Phone: [Your Contact Number]</p>
         
         <div class="terms-policy-link">
-            <a href="index.php">Go back to Home</a>
+            <a href="home.php">Go back to Home</a>
         </div>
     </div>
     
