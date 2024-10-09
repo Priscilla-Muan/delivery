@@ -14,24 +14,30 @@ $driver = new Driver($db);
 $assigned_orders = $driver->getAssignedOrders($_SESSION['user_id']);
 
 $updated_order = null; // Variable to hold updated order details
+$success_message = ''; // Variable to hold success message
 
 if (isset($_POST['update_status'])) {
     $order_id = $_POST['order_id'];
     $status = $_POST['status']; 
 
-    try {
-        if ($driver->updateOrderStatus($order_id, $status)) {
-            echo "Order status updated successfully.";
-            // Refresh assigned orders after update
-            $assigned_orders = $driver->getAssignedOrders($_SESSION['user_id']);
-            // Get the specific updated order
-            $stmt = $db->prepare("SELECT * FROM orders WHERE id = :order_id");
-            $stmt->bindParam(':order_id', $order_id);
-            $stmt->execute();
-            $updated_order = $stmt->fetch(PDO::FETCH_ASSOC);
+    $validStatuses = ['Pending', 'Pick Up', 'Delivered'];
+    if (!in_array($status, $validStatuses)) {
+        echo '<div class="alert alert-danger" role="alert">Invalid status.</div>';
+    } else {
+        try {
+            if ($driver->updateOrderStatus($order_id, $status)) {
+                $success_message = "Order status updated successfully.";
+                // Refresh assigned orders after update
+                $assigned_orders = $driver->getAssignedOrders($_SESSION['user_id']);
+                // Get the specific updated order
+                $stmt = $db->prepare("SELECT * FROM orders WHERE id = :order_id");
+                $stmt->bindParam(':order_id', $order_id);
+                $stmt->execute();
+                $updated_order = $stmt->fetch(PDO::FETCH_ASSOC);
+            }
+        } catch (Exception $e) {
+            echo "Error: " . $e->getMessage();
         }
-    } catch (Exception $e) {
-        echo "Error: " . $e->getMessage();
     }
 }
 ?>
@@ -106,11 +112,19 @@ if (isset($_POST['update_status'])) {
         .updated-order-table {
             margin-top: 30px;
         }
+
+        .alert {
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
 <div class="container mt-5">
     <h1>Driver Dashboard</h1>
+
+    <?php if ($success_message): ?>
+        <div class="alert alert-success" role="alert"><?php echo $success_message; ?></div>
+    <?php endif; ?>
 
     <h2>Assigned Orders</h2>
     <table class="table">
@@ -129,15 +143,19 @@ if (isset($_POST['update_status'])) {
                     <td><?php echo htmlspecialchars($row['client_name']); ?></td>
                     <td><?php echo htmlspecialchars($row['status']); ?></td>
                     <td>
-                        <form method="POST" action="">
-                            <input type="hidden" name="order_id" value="<?php echo htmlspecialchars($row['id']); ?>">
-                            <select name="status" required>
-                                <option value="Pending" <?php echo $row['status'] == 'Pending' ? 'selected' : ''; ?>>Pending</option>
-                                <option value="Pick Up" <?php echo $row['status'] == 'Pick Up' ? 'selected' : ''; ?>>Pick Up</option>
-                                <option value="Delivered" <?php echo $row['status'] == 'Delivered' ? 'selected' : ''; ?>>Delivered</option>
-                            </select>
-                            <button type="submit" name="update_status" class="btn btn-warning">Update Status</button>
-                        </form>
+                        <?php if ($row['status'] !== 'Delivered'): ?>
+                            <form method="POST" action="">
+                                <input type="hidden" name="order_id" value="<?php echo htmlspecialchars($row['id']); ?>">
+                                <select name="status" required>
+                                    <option value="Pending" <?php echo $row['status'] == 'Pending' ? 'selected' : ''; ?>>Pending</option>
+                                    <option value="Pick Up" <?php echo $row['status'] == 'Pick Up' ? 'selected' : ''; ?>>Pick Up</option>
+                                    <option value="Delivered" <?php echo $row['status'] == 'Delivered' ? 'selected' : ''; ?>>Delivered</option>
+                                </select>
+                                <button type="submit" name="update_status" class="btn btn-warning">Update Status</button>
+                            </form>
+                        <?php else: ?>
+                            <span class="text-muted">Status updated to Delivered</span>
+                        <?php endif; ?>
                     </td>
                 </tr>
             <?php endwhile; ?>
@@ -166,4 +184,3 @@ if (isset($_POST['update_status'])) {
 </div>
 </body>
 </html>
-

@@ -18,7 +18,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $sanitized_username = $conn->quote($username); 
         $sanitized_password = password_hash($password, PASSWORD_DEFAULT);
         $sanitized_email = $conn->quote($email); 
-        $sanitized_contact = !empty($contact) ? $conn->quote($contact) : null; 
+        // Check if contact is not empty before quoting it
+        $sanitized_contact = !empty($contact) ? $conn->quote($contact) : "NULL"; 
         $check_sql = "SELECT * FROM users WHERE username=$sanitized_username";
         $check_result = $conn->query($check_sql);
 
@@ -26,13 +27,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $message = '<div class="alert alert-danger text-center">This account already exists. 
             <a href="index.php" class="alert-link">Go to homepage</a> to log in.</div>';
         } else {
+            // Ensure to use NULL directly for NULL values
             $sql = "INSERT INTO users (username, password, email, role, contact) 
                     VALUES ($sanitized_username, '$sanitized_password', $sanitized_email, '$role', $sanitized_contact)";
 
-            if ($conn->exec($sql)) {
-                $message = '<div class="alert alert-success text-center">Account created successfully. You can now log in.</div>';
-            } else {
-                $message = '<div class="alert alert-danger text-center">Error: ' . $conn->errorInfo()[2] . '</div>'; 
+            try {
+                if ($conn->exec($sql)) {
+                    $message = '<div class="alert alert-success text-center">Account created successfully. You can now log in.</div>';
+                } else {
+                    $message = '<div class="alert alert-danger text-center">Error: ' . $conn->errorInfo()[2] . '</div>'; 
+                }
+            } catch (PDOException $e) {
+                $message = '<div class="alert alert-danger text-center">Error: ' . $e->getMessage() . '</div>';
             }
         }
     } else {
@@ -58,7 +64,7 @@ function validate_user_input($username, $password, $email, $role, $contact) {
 <head>
     <meta charset="utf-8">
     <title>Rindra Delivery Service - Create Account</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <style>
         body {

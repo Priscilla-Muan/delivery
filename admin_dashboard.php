@@ -7,6 +7,9 @@ $db = $database->getConnection();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'admin') {
     die("Access denied!");
 }
+// Fetch all orders including updated statuses
+$stmt = $db->query("SELECT id, client_name, status, driver_id FROM orders");
+$orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $orders = [];
 $delivered_orders = [];
@@ -16,10 +19,10 @@ $search_query = '';
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['search'])) {
     $search_query = $_POST['search_query'] ?? '';
     
-    // Prepare the search query for active orders
-    $searchQuery = "SELECT o.*, u.username AS driver_username FROM orders o LEFT JOIN users u ON o.driver_id = u.id WHERE o.client_name LIKE :search_query AND o.status != 'Delivered'";
+    $searchQuery = " SELECT o.*, u.username AS driver_username FROM orders o LEFT JOIN users u ON o.driver_id = u.id WHERE o.client_name LIKE :search_query OR o.id LIKE :search_query OR u.username LIKE :search_query;";
+
     $stmt = $db->prepare($searchQuery);
-    $stmt->bindValue(':search_query', '%' . $search_query . '%'); // Using wildcards for LIKE
+    $stmt->bindValue(':search_query', '%' . $search_query . '%'); 
     $stmt->execute();
     $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } else {
@@ -56,23 +59,35 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['create_order'])) {
     }
 }
 
-// Handle driver assignment
+// Handle driver assignment with driver availability check
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['assign_driver'])) {
     $order_id = $_POST['order_id'];
     $driver_id = $_POST['driver_id'];
 
-    // Prepare the update query
-    $updateQuery = "UPDATE orders SET driver_id = :driver_id WHERE id = :order_id";
-    $stmt = $db->prepare($updateQuery);
-    $stmt->bindValue(':driver_id', $driver_id);
-    $stmt->bindValue(':order_id', $order_id);
-    
-    if ($stmt->execute()) {
-        echo "<div class='alert alert-success'>Driver assigned successfully!</div>";
+    // Check if the driver is already assigned to a non-delivered order
+    $checkDriverQuery = "SELECT id FROM orders WHERE driver_id = :driver_id AND status != 'Delivered'";
+    $stmtCheckDriver = $db->prepare($checkDriverQuery);
+    $stmtCheckDriver->bindValue(':driver_id', $driver_id);
+    $stmtCheckDriver->execute();
+    $activeOrder = $stmtCheckDriver->fetch(PDO::FETCH_ASSOC);
+
+    if ($activeOrder) {
+        echo "<div class='alert alert-danger'>Driver is already assigned to an active order (ID: {$activeOrder['id']}). Complete that delivery before assigning another.</div>";
     } else {
-        echo "<div class='alert alert-danger'>Error assigning driver!</div>";
+        // Prepare the update query to assign the driver
+        $updateQuery = "UPDATE orders SET driver_id = :driver_id WHERE id = :order_id";
+        $stmt = $db->prepare($updateQuery);
+        $stmt->bindValue(':driver_id', $driver_id);
+        $stmt->bindValue(':order_id', $order_id);
+        
+        if ($stmt->execute()) {
+            echo "<div class='alert alert-success'>Driver assigned successfully!</div>";
+        } else {
+            echo "<div class='alert alert-danger'>Error assigning driver!</div>";
+        }
     }
 }
+
 
 // Handle status update
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_status'])) {
@@ -159,6 +174,11 @@ $drivers = $stmtDrivers->fetchAll(PDO::FETCH_ASSOC);
             border-radius: 15px;
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
         }
+        .btn-homepage {
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px;
+    }
     </style>
 </head>
 <body>
@@ -168,13 +188,93 @@ $drivers = $stmtDrivers->fetchAll(PDO::FETCH_ASSOC);
     <!-- Search Form -->
     <form method="POST" class="row g-3 mb-4">
         <div class="col-auto">
-            <label for="searchInput" class="visually-hidden">Search by Client Name</label>
-            <input type="text" class="form-control" id="searchInput" name="search_query" placeholder="Search by Client Name" value="<?php echo htmlspecialchars($search_query); ?>">
+            <label for="searchInput" class="visually-hidden"></label>
+            <input type="text" class="form-control" id="searchInput" name="search_query" placeholder="Search here" value="<?php echo htmlspecialchars($search_query); ?>">
         </div>
         <div class="col-auto">
             <button type="submit" name="search" class="btn btn-primary mb-3">Search</button>
         </div>
     </form>
+
+    <!-- Display Search Results -->
+<?php if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['search'])): ?>
+    <h2 class="mt-5">Search Results</h2>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Order ID</th>
+                <th>Client Name</th>
+                <th>Client Address</th>
+                <th>Client Contact</th>
+                <th>Status</th>
+                <th>Assigned Driver</th>
+                <th>Assign Driver</th>
+                <th>Update Status</th>
+                <th>Remove Order</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if (!empty($orders)): ?>
+                <?php foreach ($orders as $order): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($order['id']); ?></td>
+                        <td><?php echo htmlspecialchars($order['client_name']); ?></td>
+                        <td><?php echo htmlspecialchars($order['client_address']); ?></td>
+                        <td><?php echo htmlspecialchars($order['client_contact']); ?></td>
+                        <td><?php echo htmlspecialchars($order['status']); ?></td>
+                        <td><?php echo htmlspecialchars($order['driver_username'] ?: 'Not Assigned'); ?></td>
+                        <td>
+                            <?php if ($order['status'] != 'Delivered'): ?>
+                                <form method="POST">
+                                    <select name="driver_id" class="form-select" required>
+                                        <option value="">Select Driver</option>
+                                        <?php foreach ($drivers as $driver): ?>
+                                            <option value="<?php echo htmlspecialchars($driver['id']); ?>"><?php echo htmlspecialchars($driver['username']); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <input type="hidden" name="order_id" value="<?php echo htmlspecialchars($order['id']); ?>">
+                                    <button type="submit" name="assign_driver" class="btn btn-success btn-sm">Assign</button>
+                                </form>
+                            <?php else: ?>
+                                <span>N/A</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($order['status'] != 'Delivered'): ?>
+                                <form method="POST">
+                                    <select name="status" class="form-select" required>
+                                        <option value="Pending">Pending</option>
+                                        <option value="Pick Up">Pick Up</option>
+                                        <option value="Delivered">Delivered</option>
+                                    </select>
+                                    <input type="hidden" name="order_id" value="<?php echo htmlspecialchars($order['id']); ?>">
+                                    <button type="submit" name="update_status" class="btn btn-warning btn-sm">Update</button>
+                                </form>
+                            <?php else: ?>
+                                <span>N/A</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($order['status'] != 'Delivered'): ?>
+                                <form method="POST">
+                                    <input type="hidden" name="order_id" value="<?php echo htmlspecialchars($order['id']); ?>">
+                                    <button type="submit" name="remove_order" class="btn btn-danger btn-sm">Remove</button>
+                                </form>
+                            <?php else: ?>
+                                <span>N/A</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <tr>
+                    <td colspan="9" class="text-center">No results found for "<?php echo htmlspecialchars($search_query); ?>"</td>
+                </tr>
+            <?php endif; ?>
+        </tbody>
+    </table>
+<?php endif; ?>
+
 
     <!-- Create Order Form -->
     <h2>Create Order</h2>
@@ -253,6 +353,32 @@ $drivers = $stmtDrivers->fetchAll(PDO::FETCH_ASSOC);
         </tbody>
     </table>
 
+    <div class="container mt-5">
+    <h1>Admin Dashboard</h1>
+
+    <h2>All Orders</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Order ID</th>
+                <th>Client Name</th>
+                <th>Status</th>
+                <th>Driver ID</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($orders as $order): ?>
+                <tr>
+                    <td><?php echo htmlspecialchars($order['id']); ?></td>
+                    <td><?php echo htmlspecialchars($order['client_name']); ?></td>
+                    <td><?php echo htmlspecialchars($order['status']); ?></td>
+                    <td><?php echo htmlspecialchars($order['driver_id']); ?></td>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+</div>
+
     <!-- Delivered Orders Table -->
     <h2 class="mt-5">Delivered Orders</h2>
     <table class="table table-striped">
@@ -281,6 +407,10 @@ $drivers = $stmtDrivers->fetchAll(PDO::FETCH_ASSOC);
     </table>
 </div>
 
+<div class="text-center mt-4">
+        <a href="add_driver.php" class="btn btn-homepage">See the Drivers' Data.</a>
+    </div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
 </body>
-</html>
+</html> 
