@@ -9,34 +9,34 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f0f4f7; /* Light background color */
+            background-color: #f0f4f7;
             margin: 0;
             padding: 20px;
-            color: #333; /* Dark text color */
+            color: #333; 
         }
         h1 {
-            color: #d64e4e; /* Red color for the main heading */
+            color: #d64e4e; 
             text-align: center;
         }
         h2, h3 {
-            color: #0056b3; /* Blue color for subheadings */
+            color: #0056b3; 
             margin-top: 20px;
         }
         .container {
             max-width: 800px;
             margin: auto;
             padding: 20px;
-            background: white; /* White background for the content */
+            background: white; 
             border-radius: 8px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
             line-height: 1.6;
         }
         a {
-            color: #0056b3; /* Link color */
+            color: #0056b3; 
             text-decoration: none;
         }
         a:hover {
-            text-decoration: underline; /* Underline on hover */
+            text-decoration: underline;
         }
         .terms-policy-link {
             text-align: center;
@@ -49,7 +49,7 @@
         }
         @media (max-width: 600px) {
             h1 {
-                font-size: 24px; /* Adjust heading size on small screens */
+                font-size: 24px; 
             }
         }
     </style>

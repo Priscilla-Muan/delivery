@@ -12,11 +12,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password = $_POST["password"];
     $email = $_POST["email"];
     $role = $_POST["role"];
+    $contact = isset($_POST["contact"]) ? $_POST["contact"] : null; 
 
-    if (validate_user_input($username, $password, $email, $role)) {
+    if (validate_user_input($username, $password, $email, $role, $contact)) {
         $sanitized_username = $conn->quote($username); 
         $sanitized_password = password_hash($password, PASSWORD_DEFAULT);
         $sanitized_email = $conn->quote($email); 
+        $sanitized_contact = !empty($contact) ? $conn->quote($contact) : null; 
         $check_sql = "SELECT * FROM users WHERE username=$sanitized_username";
         $check_result = $conn->query($check_sql);
 
@@ -24,7 +26,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $message = '<div class="alert alert-danger text-center">This account already exists. 
             <a href="index.php" class="alert-link">Go to homepage</a> to log in.</div>';
         } else {
-            $sql = "INSERT INTO users (username, password, email, role) VALUES ($sanitized_username, '$sanitized_password', $sanitized_email, '$role')";
+            $sql = "INSERT INTO users (username, password, email, role, contact) 
+                    VALUES ($sanitized_username, '$sanitized_password', $sanitized_email, '$role', $sanitized_contact)";
 
             if ($conn->exec($sql)) {
                 $message = '<div class="alert alert-success text-center">Account created successfully. You can now log in.</div>';
@@ -37,10 +40,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 }
 
-function validate_user_input($username, $password, $email, $role) {
-    return !empty($username) && !empty($password) && !empty($email) &&
-           filter_var($email, FILTER_VALIDATE_EMAIL) &&
-           in_array($role, array("admin", "client", "driver"));
+function validate_user_input($username, $password, $email, $role, $contact) {
+    $is_valid = !empty($username) && !empty($password) && !empty($email) &&
+                filter_var($email, FILTER_VALIDATE_EMAIL) &&
+                in_array($role, array("admin", "client", "driver"));
+
+    if ($role === "driver") {
+        return $is_valid && !empty($contact); 
+    }
+    
+    return $is_valid;
 }
 ?>
 
@@ -71,7 +80,21 @@ function validate_user_input($username, $password, $email, $role) {
             justify-content: space-between;
             margin-bottom: 15px;
         }
+        .hidden-field {
+            display: none;
+        }
     </style>
+    <script>
+        function toggleContactField() {
+            var role = document.getElementById("role").value;
+            var contactField = document.getElementById("contactField");
+            if (role === "driver") {
+                contactField.style.display = "block";
+            } else {
+                contactField.style.display = "none";
+            }
+        }
+    </script>
 </head>
 
 <body>
@@ -99,13 +122,20 @@ function validate_user_input($username, $password, $email, $role) {
                     </div>
                     <div class="mb-3">
                         <label for="role" class="form-label">Role</label>
-                        <select name="role" id="role" class="form-control" required>
+                        <select name="role" id="role" class="form-control" onchange="toggleContactField()" required>
                             <option value="">Select Role</option>
                             <option value="admin">Admin</option>
                             <option value="client">Client</option>
                             <option value="driver">Driver</option>
                         </select>
-                    </div><br>
+                    </div>
+
+                    <!-- Hidden contact field for drivers -->
+                    <div class="mb-3 hidden-field" id="contactField">
+                        <label for="contact" class="form-label">Driver Contact</label>
+                        <input type="text" class="form-control" id="contact" name="contact" maxlength="55">
+                    </div>
+
                     <div class="d-flex justify-content-center">
                         <button type="submit" class="btn btn-primary">Create Account</button>
                     </div>

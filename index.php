@@ -1,8 +1,7 @@
 <?php
 session_start();
-require 'Database.php'; // Include your Database connection class
+require 'Database.php';
 
-// Initialize CSRF token only if it's not already set
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }

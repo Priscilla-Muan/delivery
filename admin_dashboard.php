@@ -1,27 +1,30 @@
 <?php
 session_start();
-require 'database.php'; // Database connection class
-
+require 'database.php'; 
 $database = new Database();
-$db = $database->getConnection(); // Get database connection
+$db = $database->getConnection(); 
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'admin') {
-    die("Access denied!"); // Ensure the user is logged in as an admin
+    die("Access denied!");
 }
 
-// Initialize variables
 $orders = [];
 $drivers = [];
 
-// Handle form submissions
+// Search functionality
+$search_query = "";
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    if (isset($_POST['search'])) {
+        $search_query = $_POST['search_query'];
+    }
+}
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (isset($_POST['create_order'])) {
-        // Handle create order
         $client_name = $_POST['client_name'];
         $client_address = $_POST['client_address'];
         $client_contact = $_POST['client_contact'];
 
-        // Create Order
         $createQuery = "INSERT INTO orders (client_name, client_address, client_contact, status, date_time) VALUES (:client_name, :client_address, :client_contact, 'Pending', NOW())";
         $stmt = $db->prepare($createQuery);
         $stmt->bindParam(':client_name', $client_name);
@@ -29,16 +32,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt->bindParam(':client_contact', $client_contact);
         $stmt->execute();
     } elseif (isset($_POST['update_status'])) {
-        // Handle update status
         $order_id = $_POST['order_id'];
         $status = $_POST['status'];
-
-        // Validate the status value before updating
         $valid_statuses = ['Pending', 'On the way', 'Delivered'];
         if (!in_array($status, $valid_statuses)) {
             echo "Invalid status value!";
         } else {
-            // Update Order Status
             $updateQuery = "UPDATE orders SET status = :status WHERE id = :order_id";
             $stmt = $db->prepare($updateQuery);
             $stmt->bindParam(':status', $status);
@@ -50,16 +49,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
         }
     } elseif (isset($_POST['delete_order'])) {
-        // Handle delete order
         $order_id = $_POST['order_id'];
 
-        // Delete Order
         $deleteQuery = "DELETE FROM orders WHERE id = :order_id";
         $stmt = $db->prepare($deleteQuery);
         $stmt->bindParam(':order_id', $order_id);
         $stmt->execute();
     } elseif (isset($_POST['assign_driver'])) {
-        // Handle assigning a driver to an order
         $order_id = $_POST['order_id'];
         $driver_id = $_POST['driver_id'];
 
@@ -72,9 +68,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 }
 
-// Fetch all orders
+// Fetch all orders with search functionality
 $query = "SELECT o.*, u.username AS driver_username FROM orders o LEFT JOIN users u ON o.driver_id = u.id";
+if (!empty($search_query)) {
+    $query .= " WHERE o.client_name LIKE :search_query";
+}
 $stmt = $db->prepare($query);
+if (!empty($search_query)) {
+    $search_param = "%" . $search_query . "%";
+    $stmt->bindParam(':search_query', $search_param);
+}
 $stmt->execute();
 $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -94,114 +97,123 @@ $drivers = $stmtDrivers->fetchAll(PDO::FETCH_ASSOC);
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css">
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
 </head>
-    <style>
-        body {
-            background-image: url('img6.jpg');
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            background-size: cover;
-                    color: #333; 
-        }
+<style>
+    body {
+        background-image: url('img6.jpg');
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+        background-size: cover;
+        color: #333; 
+    }
 
-        .table {
-            background-color: rgba(255, 255, 255, 0.85); 
-            border-radius: 15px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-            margin-bottom: 30px;
-        }
+    .table {
+        background-color: rgba(255, 255, 255, 0.85); 
+        border-radius: 15px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        margin-bottom: 30px;
+    }
 
-        h1, h2 {
-            text-align: center;
-            color: #333;
-        }
+    h1, h2 {
+        text-align: center;
+        color: #333;
+    }
 
-        .error-message {
-            color: red;
-            text-align: center;
-            margin-bottom: 15px;
-        }
+    .error-message {
+        color: red;
+        text-align: center;
+        margin-bottom: 15px;
+    }
 
-        .logo {
-            text-align: center;
-            margin-bottom: 20px;
-        }
+    .logo {
+        text-align: center;
+        margin-bottom: 20px;
+    }
 
-        .logo img {
-            max-width: 185px;
-        }
+    .logo img {
+        max-width: 185px;
+    }
 
-        .text-center-custom {
-            text-align: center;
-            margin: 10px 0;
-        }
+    .text-center-custom {
+        text-align: center;
+        margin: 10px 0;
+    }
 
-        .btn-primary {
-            background-color: #007bff;
-            border-color: #007bff;
-        }
+    .btn-primary {
+        background-color: #007bff;
+        border-color: #007bff;
+    }
 
-        .btn-primary:hover {
-            background-color: #0056b3;
-            border-color: #004085;
-        }
+    .btn-primary:hover {
+        background-color: #0056b3;
+        border-color: #004085;
+    }
 
-        .btn-success {
-            background-color: #28a745;
-            border-color: #28a745;
-        }
+    .btn-success {
+        background-color: #28a745;
+        border-color: #28a745;
+    }
 
-        .btn-success:hover {
-            background-color: #218838;
-            border-color: #1e7e34;
-        }
+    .btn-success:hover {
+        background-color: #218838;
+        border-color: #1e7e34;
+    }
 
-        .btn-danger {
-            background-color: #dc3545;
-            border-color: #dc3545;
-        }
+    .btn-danger {
+        background-color: #dc3545;
+        border-color: #dc3545;
+    }
 
-        .btn-danger:hover {
-            background-color: #c82333;
-            border-color: #bd2130;
-        }
+    .btn-danger:hover {
+        background-color: #c82333;
+        border-color: #bd2130;
+    }
 
-        .btn-warning {
-            background-color: #ffc107;
-            border-color: #ffc107;
-        }
+    .btn-warning {
+        background-color: #ffc107;
+        border-color: #ffc107;
+    }
 
-        .btn-warning:hover {
-            background-color: #e0a800;
-            border-color: #d39e00;
-        }
+    .btn-warning:hover {
+        background-color: #e0a800;
+        border-color: #d39e00;
+    }
 
-        .table thead th {
-            background-color: #6c757d; 
-            color: white;
-            text-align: center;
-        }
+    .table thead th {
+        background-color: #6c757d; 
+        color: white;
+        text-align: center;
+    }
 
-        .table tbody td {
-            vertical-align: middle;
-            text-align: center;
-        }
+    .table tbody td {
+        vertical-align: middle;
+        text-align: center;
+    }
 
-        .form-control {
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
+    .form-control {
+        border-radius: 5px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
 
-        .container {
-            background-color: rgba(255, 255, 255, 0.9); 
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
-        }
-
-    </style>
+    .container {
+        background-color: rgba(255, 255, 255, 0.9); 
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+    }
+</style>
 <body>
 <div class="container mt-5">
     <h1>Admin Dashboard</h1>
+<form method="POST" class="row g-3 mb-4">
+    <div class="col-auto">
+        <label for="searchInput" class="visually-hidden">Search by Client Name</label>
+        <input type="text" class="form-control" id="searchInput" name="search_query" placeholder="Search by Client Name" value="<?php echo htmlspecialchars($search_query); ?>">
+    </div>
+    <div class="col-auto">
+        <button type="submit" name="search" class="btn btn-primary mb-3">Search</button>
+    </div>
+</form>
+
 
     <!-- Create Order Form -->
     <h2>Create Order</h2>
@@ -276,33 +288,6 @@ $drivers = $stmtDrivers->fetchAll(PDO::FETCH_ASSOC);
                         </form>
                     </td>
                 </tr>
-            <?php endforeach; ?>
-        </tbody>
-    </table>
-
-    <!-- Order History Section -->
-    <h2 class="mt-5">Order History</h2>
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Order ID</th>
-                <th>Client Name</th>
-                <th>Status</th>
-                <th>Date/Time</th>
-                <th>Assigned Driver</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php foreach ($orders as $order): ?>
-                <?php if ($order['status'] == 'Delivered'): ?>
-                    <tr>
-                        <td><?php echo htmlspecialchars($order['id']); ?></td>
-                        <td><?php echo htmlspecialchars($order['client_name']); ?></td>
-                        <td><?php echo htmlspecialchars($order['status']); ?></td>
-                        <td><?php echo htmlspecialchars($order['date_time']); ?></td>
-                        <td><?php echo htmlspecialchars($order['driver_username'] ?: 'Not assigned'); ?></td>
-                    </tr>
-                <?php endif; ?>
             <?php endforeach; ?>
         </tbody>
     </table>
